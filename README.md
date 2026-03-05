@@ -26,12 +26,6 @@ A small data pipeline that answers: **“Is power cheap or expensive right now?�
 - `data/` (ignored) — generated CSVs and JSON
 - `reports/figures/` — charts (PNG)
 
-## Setup (Windows / VS Code)
-```bash
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-
 
 Config
 
