@@ -68,20 +68,13 @@ def main():
     items = sorted(df[item_col].dropna().unique().tolist())
     print("XML_DATA_ITEM values (sample):", items[:12], "..." if len(items) > 12 else "")
 
-    # Keep only price rows.
-    # Commonly, total LMP rows are tagged with something containing 'LMP'
-    price_df = df[df[item_col].astype(str).str.contains("LMP", case=False, na=False)].copy()
+    # Keep ONLY total LMP (LMP_PRC)
+    price_df = df[df[item_col].astype(str).str.upper().eq("LMP_PRC")].copy()
 
     if price_df.empty:
-        # Fallback: sometimes it's tagged differently; print a hint
-        print("No rows matched 'LMP' in XML_DATA_ITEM. Try checking XML_DATA_ITEM values above.")
-        raise ValueError("Could not identify LMP rows in the response.")
-
-    # If there are multiple LMP components, prefer the "total" one if present
-    # (keep the most informative subset; if not available, keep all LMP-tagged rows)
-    total_mask = price_df[item_col].astype(str).str.contains("TOTAL", case=False, na=False)
-    if total_mask.any():
-        price_df = price_df[total_mask].copy()
+        print("No LMP_PRC rows found. Available XML_DATA_ITEM values:",
+              sorted(df[item_col].dropna().unique().tolist()))
+        raise ValueError("Could not find total LMP rows (LMP_PRC).")
 
     # Rename for clarity
     price_df = price_df.rename(columns={
