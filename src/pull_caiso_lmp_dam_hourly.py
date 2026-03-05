@@ -26,7 +26,8 @@ def read_singlezip_csv_from_bytes(content: bytes) -> pd.DataFrame:
 
 def main():
     end_utc = datetime.utcnow().replace(minute=0, second=0, microsecond=0)
-    start_utc = end_utc - timedelta(hours=24)
+    LOOKBACK_DAYS = int(os.getenv("LOOKBACK_DAYS", "7"))
+    start_utc = end_utc - timedelta(days=LOOKBACK_DAYS)
 
     params = {
         "queryname": "PRC_LMP",

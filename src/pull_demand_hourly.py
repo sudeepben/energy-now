@@ -65,7 +65,8 @@ def clean(df: pd.DataFrame) -> pd.DataFrame:
 
 def main():
     end_dt = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
-    start_dt = end_dt - timedelta(hours=48)
+    LOOKBACK_DAYS = int(os.getenv("LOOKBACK_DAYS", "7"))
+    start_dt = end_dt - timedelta(days=LOOKBACK_DAYS)
 
     rows = fetch_all(start_dt, end_dt)
     if not rows:
