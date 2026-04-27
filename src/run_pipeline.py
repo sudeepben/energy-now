@@ -16,6 +16,8 @@ def main():
     run([py, "src/pull_demand_hourly.py"])
     run([py, "src/pull_caiso_lmp_dam_hourly.py"])
     run([py, "src/build_energy_signal.py"])
+    run([py, "src/ingest_compute_telemetry.py"])
+    run([py, "src/build_dispatch_signal.py"])
 
     print("\n✅ Pipeline complete.")
 
