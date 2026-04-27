@@ -7,9 +7,12 @@ __pycache__/
 .env
 
 # Data
-data/
-*.csv
 *.parquet
+
+# Keep dashboard-ready data files
+!data/
+!data/dispatch_signal_latest.csv
+!data/dispatch_now.json
 
 # OS/Editor
 .DS_Store
