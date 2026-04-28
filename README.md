@@ -1,77 +1,231 @@
-# energy-now
+# ⚡ Energy-Aware GPU Dispatch System
 
-# Energy-Now (CAISO + EIA)
+## 🌐 Live Demo
 
-A small data pipeline that answers: **“Is power cheap or expensive right now?”** using:
-- **EIA Open Data API** → CAISO demand (sub-BA demand aggregated to total demand)
-- **CAISO OASIS API** → Day-Ahead hourly LMP (hub: `TH_NP15_GEN-APND`)
-- A join + labeling step to classify hourly price as **CHEAP / NORMAL / EXPENSIVE**
-- A visualization report (time series, heatmap, boxplots)
+👉 https://energy-now-h6ld3wowdzazeya7w9azlr.streamlit.app
 
-## What’s implemented (so far)
-✅ Pull hourly CAISO demand (EIA) for a configurable lookback window  
-✅ Pull CAISO Day-Ahead hourly LMP from OASIS (total LMP: `LMP_PRC`)  
-✅ Merge demand + price into a single “energy signal” dataset  
-✅ Label prices using **hour-of-day percentile baseline** (more accurate than global threshold)  
-✅ CLI status output in local time (America/Denver)  
-✅ Visualization report saved as PNGs
+---
 
-## Repo structure
-- `src/`
-  - `pull_demand_hourly.py` — EIA demand pull (CAISO parent = `CISO`)
-  - `pull_caiso_lmp_dam_hourly.py` — CAISO OASIS DAM LMP pull
-  - `build_energy_signal.py` — merge + label + “now” snapshot + CLI report
-  - `run_pipeline.py` — runs the full pipeline
-  - `viz_report.py` — generates PNG charts
-- `data/` (ignored) — generated CSVs and JSON
-- `reports/figures/` — charts (PNG)
+## 📌 Project Overview
 
+This project is a **smart energy management system** for GPU-based workloads.
 
-Config
+It helps answer a simple but powerful question:
 
-Create a .env file in the repo root (this file is ignored by git):
+👉 *“When should we run GPUs, use battery power, or rely on grid electricity to save cost?”*
 
-EIA_API_KEY=YOUR_EIA_KEY
-EIA_PARENT=CISO
-CAISO_NODE=TH_NP15_GEN-APND
-LOOKBACK_DAYS=7
+The system combines:
 
-Security note: never commit .env. Rotate keys if accidentally shared.
+* Electricity price data
+* GPU workload information
+* Battery status
+* Temperature conditions
 
-Run the pipeline
+and makes **real-time decisions** to optimize energy usage.
+
+---
+
+## 💡 Why This Project Matters
+
+Running GPUs (for AI, ML, data processing) consumes a lot of electricity.
+
+Without optimization:
+
+* Systems always use grid power ❌
+* Costs increase significantly ❌
+
+With this system:
+
+* Uses battery when electricity is expensive ✅
+* Charges battery when electricity is cheap ✅
+* Adjusts compute load intelligently ✅
+
+👉 Result: **~47% simulated cost savings**
+
+---
+
+## 🧠 What the System Does
+
+Every minute, the system decides:
+
+### 🔋 Battery Action
+
+* Charge
+* Hold
+* Discharge
+
+### ⚡ Power Source
+
+* Grid
+* Battery
+
+### 🖥️ Compute Mode
+
+* Full (maximum performance)
+* Reduced (moderate usage)
+* Critical Only (minimum usage)
+
+### 📝 Decision Reason
+
+Each decision includes a **clear explanation**.
+
+---
+
+## ⚙️ How It Works (Simple Flow)
+
+1. **Collect Data**
+
+   * Electricity prices (CAISO)
+   * Demand data (EIA)
+   * GPU and cluster telemetry
+
+2. **Process Data**
+
+   * Clean and combine datasets
+   * Generate useful features (battery state, workload level, etc.)
+
+3. **Make Decisions**
+
+   * Apply rule-based logic
+   * Decide energy usage strategy
+
+4. **Calculate Cost**
+
+   * Compare optimized vs baseline (grid-only)
+   * Compute savings
+
+5. **Visualize Results**
+
+   * Dashboard shows decisions and trends
+
+---
+
+## 📊 Key Results
+
+| Metric         | Value   |
+| -------------- | ------- |
+| Baseline Cost  | $7,094  |
+| Optimized Cost | $3,763  |
+| Savings        | $3,330  |
+| Savings %      | **47%** |
+
+---
+
+## 🖥️ Dashboard Features
+
+The live dashboard shows:
+
+* Current system decision
+* Battery status and actions
+* Power source selection
+* Compute mode
+* Cost savings
+* Time-series charts
+* Decision explanations
+
+👉 Designed for both technical and non-technical users
+
+---
+
+## 🏗️ Project Structure
+
+```
+energy-now/
+│
+├── src/
+│   ├── dashboard.py
+│   ├── run_pipeline.py
+│   ├── build_dispatch_signal.py
+│   ├── ingest_compute_telemetry.py
+│   └── other scripts
+│
+├── data/
+│   ├── dispatch_signal_latest.csv
+│   ├── dispatch_now.json
+│   └── other datasets
+│
+├── reports/
+│   ├── charts and visualizations
+│
+├── requirements.txt
+└── README.md
+```
+
+---
+
+## 🚀 How to Run Locally
+
+### 1. Install dependencies
+
+```
+pip install -r requirements.txt
+```
+
+### 2. Run the pipeline
+
+```
 python src/run_pipeline.py
+```
 
-Outputs:
+### 3. Start dashboard
 
-data/demand_hourly_CISO_latest.csv
+```
+streamlit run src/dashboard.py
+```
 
-data/caiso_lmp_dam_hourly_TH_NP15_GEN-APND_latest.csv
+---
 
-data/energy_signal_latest.csv
+## ☁️ Deployment
 
-data/energy_signal_now.json
+The project is deployed using:
 
-Run visualizations
-python src/viz_report.py
+* GitHub (code hosting)
+* Streamlit Community Cloud (dashboard hosting)
 
-Charts saved to:
+---
 
-reports/figures/
+## 🧑‍💻 Technologies Used
 
-Interpreting the label
+* Python
+* Pandas
+* Matplotlib
+* Streamlit
+* REST APIs (EIA, CAISO)
 
-Price labels are based on hour-of-day baselines:
+---
 
-CHEAP: below (or equal) the 25th percentile for that UTC hour
+## 🎯 Key Highlights
 
-EXPENSIVE: above (or equal) the 75th percentile for that UTC hour
+* End-to-end data pipeline
+* Real-time decision system
+* Explainable logic
+* Cost optimization
+* Interactive dashboard
+* Cloud deployment
 
-NORMAL: in between
+---
 
-Next steps (not done yet)
+## 🔮 Future Improvements
 
-Automate hourly runs (Task Scheduler / cron)
+* Add machine learning for prediction
+* Real-time streaming data
+* Alert system (high temperature / high cost)
+* API endpoints for integration
 
-Add FastAPI endpoint (/now) returning the JSON snapshot
+---
 
-Add alerts when EXPENSIVE
+## 👤 Author
+
+Sudeep Sampath
+
+---
+
+## 📢 Summary
+
+This project demonstrates how **data + decision logic + visualization** can be combined to solve real-world problems like energy optimization.
+
+👉 It transforms raw data into actionable insights
+👉 It reduces cost significantly
+👉 It is fully deployable and scalable
+
+---
