@@ -40,7 +40,7 @@ With this system:
 * Charges battery when electricity is cheap ✅
 * Adjusts compute load intelligently ✅
 
-👉 Result: **~47% simulated cost savings**
+👉 Result on the included sample day: **~17% simulated cost savings** (see *Limitations & Assumptions* below for what this number does and doesn't mean).
 
 ---
 
@@ -102,12 +102,29 @@ Each decision includes a **clear explanation**.
 
 ## 📊 Key Results
 
-| Metric         | Value   |
-| -------------- | ------- |
-| Baseline Cost  | $7,094  |
-| Optimized Cost | $3,763  |
-| Savings        | $3,330  |
-| Savings %      | **47%** |
+Single sample day (1,440 minutes, one cluster):
+
+| Metric         | Value     |
+| -------------- | --------- |
+| Baseline Cost  | $118.24   |
+| Optimized Cost | $98.49    |
+| Savings        | $19.75    |
+| Savings %      | **16.7%** |
+
+These numbers come from the cost model in `src/build_dispatch_signal.py::compute_costs`. See *Limitations & Assumptions* for the model.
+
+---
+
+## ⚠️ Limitations & Assumptions
+
+This is a portfolio-level simulation, not a production system. To keep the savings number honest:
+
+* **Battery energy is not free.** When the battery delivers a kWh, it was charged from the grid earlier. Since we don't have the per-kWh charge-price history, we impute it at the period's *average* grid price, scaled up by `1 / round_trip_efficiency` (default `0.85`) to account for charge/discharge losses.
+* **Round-trip efficiency:** assumed `0.85` (typical Li-ion). Realistic but a single number — no degradation cost, no rate-limit on charge/discharge.
+* **Battery capacity:** the included data only varies SoC by a small amount, so a specific kWh capacity isn't load-bearing for the headline number. The capacity assumption matters more once you wire in real charge/discharge dynamics.
+* **Decision logic is rule-based, not optimized.** The thresholds in `build_dispatch_signal.py` (`<=$0.15` → cheap, `>=$0.35` → expensive, etc.) are hand-picked. A linear-programming or model-predictive-control formulation would be the natural next step.
+* **Single sample day.** Numbers will move once tested across a month of CAISO data with multiple clusters.
+* **Baseline = always-grid.** Showing this beats grid is necessary but not sufficient. A stronger comparator is a simple time-of-use heuristic.
 
 ---
 
@@ -173,6 +190,21 @@ python src/run_pipeline.py
 streamlit run src/dashboard.py
 ```
 
+### 4. (Optional) Re-run the cost model on the included sample data
+
+If you don't have the upstream telemetry CSVs, you can still apply the cost model to the bundled `dispatch_signal_latest.csv`:
+
+```
+python src/recompute_costs.py
+```
+
+### 5. Run tests
+
+```
+pip install pytest
+pytest tests/
+```
+
 ---
 
 ## ☁️ Deployment
@@ -196,21 +228,21 @@ The project is deployed using:
 
 ## 🎯 Key Highlights
 
-* End-to-end data pipeline
-* Real-time decision system
-* Explainable logic
-* Cost optimization
-* Interactive dashboard
-* Cloud deployment
+* End-to-end data pipeline (CAISO + EIA → cleaning → decisions → dashboard)
+* Rule-based, explainable dispatch logic
+* Honest cost model with documented assumptions
+* Interactive Streamlit dashboard, deployed to Streamlit Community Cloud
+* Pure-function decision logic with pytest coverage
 
 ---
 
 ## 🔮 Future Improvements
 
-* Add machine learning for prediction
-* Real-time streaming data
-* Alert system (high temperature / high cost)
-* API endpoints for integration
+* Replace rule thresholds with a linear-programming dispatch optimizer (`pulp` / `cvxpy`) — minimize cost over a 24h horizon subject to SoC, charge/discharge rate, and thermal limits
+* Add a price forecaster (SARIMA or gradient boosting on CAISO history) and feed forecasts into the optimizer
+* Backtest harness across a full month of CAISO data — report mean / median / p95 savings, not a single day
+* Compare against a simple time-of-use heuristic, not just always-grid
+* Carbon-aware dispatch using CAISO grid-mix data (gCO₂/kWh, not just $/kWh)
 
 ---
 

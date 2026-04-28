@@ -1,4 +1,5 @@
 from pathlib import Path
+import numpy as np
 import pandas as pd
 
 
@@ -8,6 +9,10 @@ DATA_DIR = BASE_DIR / "data"
 INPUT_FILE = DATA_DIR / "compute_latest.csv"
 OUTPUT_FILE = DATA_DIR / "dispatch_signal_latest.csv"
 NOW_FILE = DATA_DIR / "dispatch_now.json"
+
+# Cost model assumptions. Documented in README "Limitations & Assumptions".
+TIMESTEP_MINUTES = 1
+ROUND_TRIP_EFFICIENCY = 0.85  # typical Li-ion battery
 
 
 def classify_price(price: float) -> str:
@@ -89,6 +94,44 @@ def decide_reason(
     return "fallback_dispatch_rule"
 
 
+def compute_costs(
+    df: pd.DataFrame,
+    timestep_minutes: int = TIMESTEP_MINUTES,
+    round_trip_efficiency: float = ROUND_TRIP_EFFICIENCY,
+) -> pd.DataFrame:
+    """Honest cost model.
+
+    Baseline: pay grid for the IT load every timestep.
+    Actual: pay grid when source is grid; otherwise the energy comes from the
+    battery, which was charged earlier from the grid. We don't have the per-kWh
+    charge price history, so we impute it at the period's average grid price,
+    grossed up by 1/round_trip_efficiency to capture charge/discharge losses.
+    "hybrid" is treated as a 50/50 split.
+    """
+    df = df.sort_values("timestamp").reset_index(drop=True).copy()
+
+    dt_hours = timestep_minutes / 60.0
+    df["it_load_kwh"] = df["power_kw_total"] * dt_hours
+
+    avg_price = df["electricity_price_usd_per_kwh"].mean()
+    imputed_battery_price = avg_price / round_trip_efficiency
+
+    grid_cost = df["electricity_price_usd_per_kwh"] * df["it_load_kwh"]
+    battery_cost = imputed_battery_price * df["it_load_kwh"]
+    hybrid_cost = 0.5 * grid_cost + 0.5 * battery_cost
+
+    df["cost_actual"] = np.select(
+        [df["power_source"] == "grid",
+         df["power_source"] == "battery",
+         df["power_source"] == "hybrid"],
+        [grid_cost, battery_cost, hybrid_cost],
+        default=grid_cost,
+    )
+    df["cost_baseline"] = grid_cost
+    df["cost_savings"] = df["cost_baseline"] - df["cost_actual"]
+    return df
+
+
 def main():
     print("Loading compute_latest.csv...")
     df = pd.read_csv(INPUT_FILE)
@@ -129,25 +172,8 @@ def main():
     )
     
     
-    # ---------------- COST CALCULATION ----------------
+    df = compute_costs(df)
 
-    # Assume:
-    # if using battery → cost = 0 (already stored energy)
-    # if using grid → cost = price * power
-
-    df["cost_actual"] = df.apply(
-        lambda row: row["electricity_price_usd_per_kwh"] * row["power_kw_total"]
-        if row["power_source"] == "grid"
-        else 0,
-        axis=1
-    )
-
-    # Baseline: always use grid
-    df["cost_baseline"] = df["electricity_price_usd_per_kwh"] * df["power_kw_total"]
-
-    # Savings
-    df["cost_savings"] = df["cost_baseline"] - df["cost_actual"]
-    
     print(f"Saving dispatch output to: {OUTPUT_FILE}")
     df.to_csv(OUTPUT_FILE, index=False)
 
