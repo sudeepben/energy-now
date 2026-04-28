@@ -214,12 +214,6 @@ The project is deployed using:
 
 ---
 
-## 👤 Author
-
-Sudeep Sampath
-
----
-
 ## 📢 Summary
 
 This project demonstrates how **data + decision logic + visualization** can be combined to solve real-world problems like energy optimization.
