@@ -40,13 +40,15 @@ With this system:
 * Charges battery when electricity is cheap ✅
 * Adjusts compute load intelligently ✅
 
-👉 Result: **~47% simulated cost savings**
+👉 Result on the included sample day: **~17% simulated cost savings** (see *Limitations & Assumptions* below for what this number does and doesn't mean).
 
 ---
 
 ## 🧠 What the System Does
 
-Every minute, the system decides:
+The decision loop ticks at **1 Hz** (once per second). Market data (CAISO LMP) only updates every ~5 minutes, so the price-driven decisions don't actually change every second — but a 1 Hz loop lets the system react instantly to **local** events: thermal spikes, sudden load changes, and **grid outages** (see the *Blackout Mode* below).
+
+Each tick decides:
 
 ### 🔋 Battery Action
 
@@ -58,6 +60,8 @@ Every minute, the system decides:
 
 * Grid
 * Battery
+* Hybrid
+* Off (during a blackout when the battery is depleted)
 
 ### 🖥️ Compute Mode
 
@@ -67,7 +71,25 @@ Every minute, the system decides:
 
 ### 📝 Decision Reason
 
-Each decision includes a **clear explanation**.
+Each decision includes a **clear explanation** (e.g. `cheap_grid_run_full`, `expensive_battery_reduce_load`, `blackout_low_soc_critical`).
+
+### ⏱️ Battery Runtime
+
+Every tick also reports `battery_runtime_minutes` — at the current load and SoC, how long until the battery hits the 5% floor. Surfaced on the dashboard so an operator can tell at a glance whether they can ride out a long outage.
+
+---
+
+## 🛑 Blackout Mode
+
+The dashboard ships with a **blackout simulation** toggle. When grid availability is `False`:
+
+* `power_source` is forced to `battery` (or `off` if SoC ≤ 5%)
+* `battery_action` is forced to `discharge` — charging is impossible
+* `compute_mode` is capped: never `full` during an outage
+* If SoC drops below 15%, compute drops to `critical_only` to extend runtime
+* The decision reason reflects the outage (`blackout_battery_only`, `blackout_low_soc_critical`, `blackout_battery_depleted`)
+
+The bundled blackout dataset (`data/dispatch_signal_1s_blackout.csv`) injects a 30-minute synthetic outage starting at 14:00 — handy for showing the dispatch flip live.
 
 ---
 
@@ -102,12 +124,29 @@ Each decision includes a **clear explanation**.
 
 ## 📊 Key Results
 
-| Metric         | Value   |
-| -------------- | ------- |
-| Baseline Cost  | $7,094  |
-| Optimized Cost | $3,763  |
-| Savings        | $3,330  |
-| Savings %      | **47%** |
+Single sample day (1,440 minutes, one cluster):
+
+| Metric         | Value     |
+| -------------- | --------- |
+| Baseline Cost  | $118.24   |
+| Optimized Cost | $98.49    |
+| Savings        | $19.75    |
+| Savings %      | **16.7%** |
+
+These numbers come from the cost model in `src/build_dispatch_signal.py::compute_costs`. See *Limitations & Assumptions* for the model.
+
+---
+
+## ⚠️ Limitations & Assumptions
+
+This is a portfolio-level simulation, not a production system. To keep the savings number honest:
+
+* **Battery energy is not free.** When the battery delivers a kWh, it was charged from the grid earlier. Since we don't have the per-kWh charge-price history, we impute it at the period's *average* grid price, scaled up by `1 / round_trip_efficiency` (default `0.85`) to account for charge/discharge losses.
+* **Round-trip efficiency:** assumed `0.85` (typical Li-ion). Realistic but a single number — no degradation cost, no rate-limit on charge/discharge.
+* **Battery capacity:** the included data only varies SoC by a small amount, so a specific kWh capacity isn't load-bearing for the headline number. The capacity assumption matters more once you wire in real charge/discharge dynamics.
+* **Decision logic is rule-based, not optimized.** The thresholds in `build_dispatch_signal.py` (`<=$0.15` → cheap, `>=$0.35` → expensive, etc.) are hand-picked. A linear-programming or model-predictive-control formulation would be the natural next step.
+* **Single sample day.** Numbers will move once tested across a month of CAISO data with multiple clusters.
+* **Baseline = always-grid.** Showing this beats grid is necessary but not sufficient. A stronger comparator is a simple time-of-use heuristic.
 
 ---
 
@@ -173,6 +212,29 @@ python src/run_pipeline.py
 streamlit run src/dashboard.py
 ```
 
+### 4. (Optional) Re-run the cost model on the included sample data
+
+If you don't have the upstream telemetry CSVs, you can still apply the cost model to the bundled `dispatch_signal_latest.csv`:
+
+```
+python src/recompute_costs.py
+```
+
+### 4b. (Optional) Generate the 1-second + blackout datasets
+
+```
+python src/simulate_per_second.py
+```
+
+This produces `data/dispatch_signal_1s.csv` (86,400 rows, 1Hz) and `data/dispatch_signal_1s_blackout.csv` (with a 30-min synthetic outage). The dashboard sidebar will show toggles for whichever datasets exist.
+
+### 5. Run tests
+
+```
+pip install pytest
+pytest tests/
+```
+
 ---
 
 ## ☁️ Deployment
@@ -196,21 +258,21 @@ The project is deployed using:
 
 ## 🎯 Key Highlights
 
-* End-to-end data pipeline
-* Real-time decision system
-* Explainable logic
-* Cost optimization
-* Interactive dashboard
-* Cloud deployment
+* End-to-end data pipeline (CAISO + EIA → cleaning → decisions → dashboard)
+* Rule-based, explainable dispatch logic
+* Honest cost model with documented assumptions
+* Interactive Streamlit dashboard, deployed to Streamlit Community Cloud
+* Pure-function decision logic with pytest coverage
 
 ---
 
 ## 🔮 Future Improvements
 
-* Add machine learning for prediction
-* Real-time streaming data
-* Alert system (high temperature / high cost)
-* API endpoints for integration
+* Replace rule thresholds with a linear-programming dispatch optimizer (`pulp` / `cvxpy`) — minimize cost over a 24h horizon subject to SoC, charge/discharge rate, and thermal limits
+* Add a price forecaster (SARIMA or gradient boosting on CAISO history) and feed forecasts into the optimizer
+* Backtest harness across a full month of CAISO data — report mean / median / p95 savings, not a single day
+* Compare against a simple time-of-use heuristic, not just always-grid
+* Carbon-aware dispatch using CAISO grid-mix data (gCO₂/kWh, not just $/kWh)
 
 ---
 
