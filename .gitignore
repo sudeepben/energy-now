@@ -9,6 +9,11 @@ __pycache__/
 # Data
 *.parquet
 
+# Per-second datasets are generated locally (large; ~28MB each).
+# Run `python src/simulate_per_second.py` to produce them.
+data/dispatch_signal_1s.csv
+data/dispatch_signal_1s_blackout.csv
+
 # Keep dashboard-ready data files
 !data/
 !data/dispatch_signal_latest.csv

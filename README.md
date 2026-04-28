@@ -46,7 +46,9 @@ With this system:
 
 ## 🧠 What the System Does
 
-Every minute, the system decides:
+The decision loop ticks at **1 Hz** (once per second). Market data (CAISO LMP) only updates every ~5 minutes, so the price-driven decisions don't actually change every second — but a 1 Hz loop lets the system react instantly to **local** events: thermal spikes, sudden load changes, and **grid outages** (see the *Blackout Mode* below).
+
+Each tick decides:
 
 ### 🔋 Battery Action
 
@@ -58,6 +60,8 @@ Every minute, the system decides:
 
 * Grid
 * Battery
+* Hybrid
+* Off (during a blackout when the battery is depleted)
 
 ### 🖥️ Compute Mode
 
@@ -67,7 +71,25 @@ Every minute, the system decides:
 
 ### 📝 Decision Reason
 
-Each decision includes a **clear explanation**.
+Each decision includes a **clear explanation** (e.g. `cheap_grid_run_full`, `expensive_battery_reduce_load`, `blackout_low_soc_critical`).
+
+### ⏱️ Battery Runtime
+
+Every tick also reports `battery_runtime_minutes` — at the current load and SoC, how long until the battery hits the 5% floor. Surfaced on the dashboard so an operator can tell at a glance whether they can ride out a long outage.
+
+---
+
+## 🛑 Blackout Mode
+
+The dashboard ships with a **blackout simulation** toggle. When grid availability is `False`:
+
+* `power_source` is forced to `battery` (or `off` if SoC ≤ 5%)
+* `battery_action` is forced to `discharge` — charging is impossible
+* `compute_mode` is capped: never `full` during an outage
+* If SoC drops below 15%, compute drops to `critical_only` to extend runtime
+* The decision reason reflects the outage (`blackout_battery_only`, `blackout_low_soc_critical`, `blackout_battery_depleted`)
+
+The bundled blackout dataset (`data/dispatch_signal_1s_blackout.csv`) injects a 30-minute synthetic outage starting at 14:00 — handy for showing the dispatch flip live.
 
 ---
 
@@ -197,6 +219,14 @@ If you don't have the upstream telemetry CSVs, you can still apply the cost mode
 ```
 python src/recompute_costs.py
 ```
+
+### 4b. (Optional) Generate the 1-second + blackout datasets
+
+```
+python src/simulate_per_second.py
+```
+
+This produces `data/dispatch_signal_1s.csv` (86,400 rows, 1Hz) and `data/dispatch_signal_1s_blackout.csv` (with a 30-min synthetic outage). The dashboard sidebar will show toggles for whichever datasets exist.
 
 ### 5. Run tests
 

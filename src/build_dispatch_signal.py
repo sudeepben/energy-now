@@ -14,6 +14,12 @@ NOW_FILE = DATA_DIR / "dispatch_now.json"
 TIMESTEP_MINUTES = 1
 ROUND_TRIP_EFFICIENCY = 0.85  # typical Li-ion battery
 
+# Battery sizing assumption used for runtime estimates. Doesn't affect cost
+# numbers on the bundled sample data (see README).
+BATTERY_CAPACITY_KWH = 500.0
+SOC_CRITICAL_PCT = 15.0  # below this, force minimum compute during outage
+SOC_DEPLETED_PCT = 5.0   # below this, treat battery as effectively empty
+
 
 def classify_price(price: float) -> str:
     if price <= 0.15:
@@ -94,6 +100,79 @@ def decide_reason(
     return "fallback_dispatch_rule"
 
 
+def battery_runtime_minutes(
+    soc_pct: float,
+    load_kw: float,
+    capacity_kwh: float = BATTERY_CAPACITY_KWH,
+    floor_pct: float = SOC_DEPLETED_PCT,
+) -> float:
+    """Minutes the battery can carry the current load before hitting floor SoC.
+
+    Returns inf if load is zero, 0 if already below the floor.
+    """
+    if load_kw <= 0:
+        return float("inf")
+    usable_pct = max(0.0, soc_pct - floor_pct)
+    usable_kwh = (usable_pct / 100.0) * capacity_kwh
+    return (usable_kwh / load_kw) * 60.0
+
+
+def decide_dispatch(state: dict, *, grid_available: bool = True) -> dict:
+    """Single pure decision function. Composes the existing decision helpers
+    and applies blackout overrides when grid is unavailable.
+
+    `state` must include: electricity_price_usd_per_kwh, battery_state,
+    thermal_state, workload_state, battery_soc_pct, power_kw_total.
+
+    Returns a decision dict with: price_state, battery_action, power_source,
+    compute_mode, decision_reason, battery_runtime_minutes.
+    """
+    price_state = classify_price(state["electricity_price_usd_per_kwh"])
+    battery_action = decide_battery_action(price_state, state["battery_state"])
+    power_source = decide_power_source(price_state, state["battery_state"])
+    compute_mode = decide_compute_mode(
+        state["thermal_state"], state["workload_state"], price_state
+    )
+    reason = decide_reason(
+        battery_action, power_source, compute_mode,
+        state["thermal_state"], state["workload_state"], price_state,
+    )
+
+    if not grid_available:
+        # During an outage we have to run from battery. Charging is impossible.
+        battery_action = "discharge"
+        if state["battery_soc_pct"] <= SOC_DEPLETED_PCT:
+            power_source = "off"
+            compute_mode = "critical_only"
+            reason = "blackout_battery_depleted"
+        elif state["battery_soc_pct"] < SOC_CRITICAL_PCT:
+            power_source = "battery"
+            compute_mode = "critical_only"
+            reason = "blackout_low_soc_critical"
+        else:
+            power_source = "battery"
+            # Keep the existing compute mode unless thermal forces it lower.
+            if state["thermal_state"] != "hot":
+                # During an outage, conservatism: never run "full".
+                if compute_mode == "full":
+                    compute_mode = "reduced"
+            reason = "blackout_battery_only"
+
+    runtime = battery_runtime_minutes(
+        soc_pct=state["battery_soc_pct"],
+        load_kw=state["power_kw_total"],
+    )
+
+    return {
+        "price_state": price_state,
+        "battery_action": battery_action,
+        "power_source": power_source,
+        "compute_mode": compute_mode,
+        "decision_reason": reason,
+        "battery_runtime_minutes": runtime,
+    }
+
+
 def compute_costs(
     df: pd.DataFrame,
     timestep_minutes: int = TIMESTEP_MINUTES,
@@ -119,12 +198,14 @@ def compute_costs(
     grid_cost = df["electricity_price_usd_per_kwh"] * df["it_load_kwh"]
     battery_cost = imputed_battery_price * df["it_load_kwh"]
     hybrid_cost = 0.5 * grid_cost + 0.5 * battery_cost
+    off_cost = pd.Series(0.0, index=df.index)  # outage with depleted battery
 
     df["cost_actual"] = np.select(
         [df["power_source"] == "grid",
          df["power_source"] == "battery",
-         df["power_source"] == "hybrid"],
-        [grid_cost, battery_cost, hybrid_cost],
+         df["power_source"] == "hybrid",
+         df["power_source"] == "off"],
+        [grid_cost, battery_cost, hybrid_cost, off_cost],
         default=grid_cost,
     )
     df["cost_baseline"] = grid_cost
